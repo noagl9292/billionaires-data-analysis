@@ -1,0 +1,643 @@
+---
+title: "Forbes Billionaires Analysis"
+author: "Noa Gelber, Paz Kagan, Aharon Malkin"
+date: "22 5 2021"
+output:
+  html_document:
+    css: font_proj.css
+
+
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(ggplot2)
+library(gridExtra)
+library(grid)
+library(devtools)
+library(gginference)
+library(hexbin)
+library(jtools)
+library(shape)
+library(dplyr)
+library(patchwork)
+library(dplyr)
+library(hrbrthemes)
+library(plotly)
+
+
+#world map libraries
+library(sp)
+library(rworldmap)
+worldmap <- getMap(resolution = "coarse")
+
+#color libraries
+library(viridis)
+library(RColorBrewer)
+library(stringr)
+display.brewer.all(colorblindFriendly = TRUE)
+
+
+```
+
+```{r, echo=FALSE}
+# Define variable containing url
+url <- "https://thumbor.forbes.com/thumbor/1500x0/smart/filters:format(jpeg)/https%3A%2F%2Fimages.forbes.com%2FBillionaires2021-ListHeader-2%2FBillionaires2021-Desktop-LanderHeader-v2.png"
+```
+<center><img src="`r url`"></center>
+
+## Background {.tabset .tabset-fade}
+
+
+
+In this markdown, we analyze [this]( https://www.kaggle.com/alexanderbader/forbes-billionaires-of-2021-20/download) data of Forbes Billionaires.
+
+### Goals 
+
+In our research, we would like to examine different aspects in the Billionaires society, using the statistic measures we learned during the course. More particularly, we will focus on two main questions:
+
+
+  * Which parameters may affect the wealth of the billionaire?
+  
+  * Does the variance of wealth vary between different cultures, and why? 
+
+
+### Importing 
+
+<script src="https://unpkg.com/@lottiefiles/lottie-player@latest/dist/lottie-player.js"></script>
+<lottie-player src="https://assets5.lottiefiles.com/packages/lf20_kpoaosqz.json"  background="transparent"  speed="1"  style="width: 500px; height: 400px;"  loop  autoplay></lottie-player>
+
+
+
+
+```{r warning=FALSE}
+Forbes_billionaires <- readr::read_csv("C:/Users/noagl/Downloads/forbes_billionaires.csv")
+```
+
+
+Let's take a quick overview using the head function.
+
+
+```{r warning=FALSE}
+head(Forbes_billionaires)
+```
+
+
+The dataset was in a CSV file- a convenient format to work with. The dataset was pretty concise, without any major filtration needed. 
+
+
+Our dataset includes the following fields:
+
+* Name - Name of the Billionaires
+* NetWorth - Their net worth in billions (USD $)
+* Country - Name of the country they are based on!
+* Source - Their income source (we filtered this column)
+* Rank - Global positions in comparison with their Net Worth
+* Age - Age of all the billionaires in the list
+* Residence - Recidence in
+* Citizenship - Citizenship from
+* Status - Marital status
+* Children - No. of children
+
+
+We will delete, the “Source” column, that describes the major income source of the billionaire as specific company names. In our opinion, the values in the column, cannot lead to significant conclusions because they aren't grouped by specific categories, therefore we ignored this section.
+
+
+In addition, we will delete "Residence" column, because it's irrelevant to our research, as we will focus on the citizenship of the billionaire.
+
+
+```{r warning=FALSE}
+Forbes_cut<- select(Forbes_billionaires, -Residence, -Source)
+head(Forbes_cut)
+```
+
+
+Great, now we would like to create few tables according to our main research questions.
+
+
+First, let's pick  the education section, which we assume may have an interesting affection on the billionaire's wealth.
+We will make a filtered version of our data, and exclude the NA values in the "Education" column.
+
+
+```{r warning=FALSE}
+Edu_cut<- Forbes_cut%>% drop_na("Education") 
+
+glimpse(Edu_cut)
+```
+
+
+Another interesting parameter, is the age of the billionaire, does older billionaires reach 
+higher n worth levels? 
+
+
+```{r warning=FALSE}
+Age_cut<- Forbes_cut%>% drop_na("Age") 
+
+glimpse(Age_cut)
+```
+
+
+One more intresting parameter is amount of children. Does it effect the wealth of a billionaire?
+
+
+```{r warning=FALSE}
+Children_cut<- Forbes_cut%>% drop_na("Children") 
+
+glimpse(Children_cut)
+```
+
+
+Now, according to our second question, we would like to filter the NA values in the "Citizenship" column.
+
+
+```{r warning=FALSE}
+City_cut<- Forbes_cut%>% drop_na("Citizenship") 
+
+glimpse(City_cut)
+```
+
+
+
+
+### Transformation and Visualization {.tabset .tabset-fade}
+
+<script src="https://unpkg.com/@lottiefiles/lottie-player@latest/dist/lottie-player.js"></script>
+<lottie-player src="https://assets5.lottiefiles.com/packages/lf20_ugrv2i0v.json"  background="transparent"  speed="1"  style="width: 500px; height: 400px;"  loop  autoplay></lottie-player>
+
+
+
+##### Amount Of Billionaires For Each Country 
+
+```{r warning=FALSE}
+counter= City_cut %>% group_by(Country) %>%
+  count() %>% filter(n > 20)
+
+country1 <- ggplot (data = counter, aes(x = reorder(Country,-n),y=n)) + 
+  theme_bw()+
+  theme(axis.text.x = element_text(angle = 60, hjust = 1)) + #adjusting the names in a good angle
+  geom_col(fill = "turquoise4",color="black") +
+  labs(x = "Country", y= "Amount", title="Amount Of Billionaires For Each Country")
+country1 
+```
+
+
+
+##### Mean Of Net Worth By Country  
+
+
+The map displays the range of means between different countries from the highest mean (colored blue) to the lowest (colored turquoise)
+
+
+```{r fig.height=7.5, fig.width=15, message=FALSE, warning=FALSE}
+
+#setting dataframe for world map
+by_NetWorth <- City_cut %>%
+  group_by(Citizenship) %>%
+  summarize(NetWorth = mean(NetWorth)) %>%
+  arrange(desc(NetWorth))
+
+
+ 
+# merging world map data with our's
+NetWorth_map <- joinCountryData2Map(by_NetWorth, 
+                                  joinCode = "NAME",
+                                  nameJoinColumn = "Citizenship"
+                                 )[-which(getMap()$ADMIN=="Antarctica"),]
+NetWorth_map <- merge(NetWorth_map, by_NetWorth, by = "Citizenship")
+
+
+# plotting
+NetWorth_map_params <- mapCountryData(NetWorth_map, 
+                            nameColumnToPlot="NetWorth.y",
+                            mapTitle = "Mean Billionaire NetWorth",
+                            oceanCol = "#DAFDFF",
+                            catMethod = "categorical",
+                            missingCountryCol = "white",
+                            colourPalette = mako(n = 68, begin = 0.2, end = 0.8, direction = -1),
+                            addLegend = FALSE,
+                            border = "black",
+                            lwd = 1)
+
+colorlegend(posx = c(0.05, 0.08),
+            left = TRUE,
+            col = mako(n = 68, begin = 0.2, end = 0.8, direction = -1),
+            zlim = c(1,11),
+            digit = 1,
+            zval=c(1,11))
+
+```
+
+
+**To make things a bit tidier, we decided to divide our visualizations based on different topics**
+
+
+#### Education 
+
+<script src="https://unpkg.com/@lottiefiles/lottie-player@latest/dist/lottie-player.js"></script>
+<lottie-player src="https://assets9.lottiefiles.com/packages/lf20_x9c4hmtd.json"  background="transparent"  speed="1"  style="width: 500px; height: 400px;"  loop  autoplay></lottie-player>
+
+
+Let's show some interesting plots regarding the education of the billionaires.
+
+
+##### Transformation For Education
+
+
+Then, we did a little transformation for several variables
+
+
+```{r warning=FALSE}
+Education<- Edu_cut$Education
+BA<- Education[str_detect(Education, ("Bachelor|LLB")) & !str_detect(Education, "Master|EMBA")]
+diploma<-Education[str_detect(Education, ("Diploma|High School|Associate")) & !str_detect(Education, "Bachelor|Master|EMBA|Doctorate|Doctor|Ph.D|Drop Out")]
+drop_out<-Education[str_detect(Education, ("Drop Out|drop out")) & !str_detect(Education, "Bachelor")]
+master<-Education[str_detect(Education, ("Master|EMBA")) & !str_detect(Education,  "Doctorate|Doctor|Ph.D|Drop Out")]
+Doctor<-Education[str_detect(Education, ("Doctorate|Doctor|Ph.D"))]
+Edu_cut <- Edu_cut %>% 
+  mutate(edu_lvl = ifelse(Education %in% BA,"BA",ifelse(Education %in% diploma,"DIPLOMA/ASSOCIATE",ifelse(Education %in% drop_out,"DROP OUT",ifelse(Education %in% master,"MASTER",ifelse(Education %in% Doctor,"DOCTOR", "UNKNOWN"))))))
+
+```
+
+
+Let's check if we received the correct values on the "edu_lvl" column
+
+
+```{r warning=FALSE}
+unique(Edu_cut$edu_lvl)
+```
+
+
+We received some values which categorized as "Unknown", i.e values that include the name of the university but didn't mention which degree. However, there are only few of these values, therefore we decided to filter them from the following plots
+
+
+##### Amount  Of Billionaires For Each Education Level
+
+
+```{r warning=FALSE}
+plot_edu_lvl <- ggplot (data =Edu_cut%>%filter(!edu_lvl=="UNKNOWN"), aes(x = fct_infreq(edu_lvl),fill=edu_lvl)) + 
+  theme_bw()+
+  theme(axis.text.x = element_text(angle = 60, hjust = 1)) + #adjusting the names in a good angle
+  geom_bar(color = "black") +
+  labs(x = "Education Level", y= "Amount")+scale_fill_brewer(name="Education Level",palette="GnBu")
+plot_edu_lvl
+```
+
+
+##### Mean & Median For Each Education Level
+
+
+```{r warning=FALSE}
+Edu_cut %>% filter(!edu_lvl=="UNKNOWN") %>%
+	group_by(edu_lvl) %>%
+	summarise(mean_NetWorth = mean(NetWorth))
+	
+Edu_cut %>% filter(!edu_lvl=="UNKNOWN") %>%
+	group_by(edu_lvl) %>%
+	summarise(median_NetWorth = median(NetWorth))
+	
+
+```
+
+
+Let's visualize this data with Boxplot:
+
+
+```{r warning=FALSE}
+box_edu <- ggplot(Edu_cut %>% filter(!edu_lvl=="UNKNOWN"), aes(x=edu_lvl,y=NetWorth , fill=edu_lvl)) +
+    geom_boxplot(alpha=0.7, ) + scale_y_log10() +
+    stat_summary(fun.y=mean, geom="point", shape=20, size=7, color="black", fill="black") +
+    theme(legend.position="none") + labs(x="Education Level",y="Net Worth")+
+    scale_fill_brewer(name="Education Level",palette="GnBu")
+box_edu
+```
+
+
+#### Family related variables
+
+<script src="https://unpkg.com/@lottiefiles/lottie-player@latest/dist/lottie-player.js"></script>
+<lottie-player src="https://assets8.lottiefiles.com/private_files/lf30_uddq5vcp.json"  background="transparent"  speed="1"  style="width: 500px; height: 400px;"  loop  autoplay></lottie-player>
+
+
+Now, we'll show how the the martial status effect the wealth of the billionaires 
+
+
+```{r warning=FALSE, ,message=FALSE}
+Status_cut<-Forbes_cut %>% drop_na("Status")
+uni<-unique(Status_cut$Status)
+
+
+status<-	 ggplot (data =Status_cut, aes(x = fct_infreq(Status),fill=Status)) + scale_y_log10() +theme_bw()+
+  theme(axis.text.x = element_text(angle = 60, hjust = 1)) + #adjusting the names in a good angle
+  geom_bar(color = "black") +
+  labs(x = "Martial Status", y= "Amount Of Billionaries", title="Amount Of Billionaires For Each Martial Status")+ scale_fill_brewer(name="Martial Status",palette="GnBu")
+
+box_stat <- ggplot(Status_cut, aes(x=Status,y=NetWorth , fill=Status)) +
+    geom_boxplot(alpha=0.7) + scale_y_log10()+
+    stat_summary(fun.y=mean, geom="point", shape=20, size=7, color="black", fill="black") +
+    theme(legend.position="none") +
+    scale_fill_brewer(name="Martial Status",palette="GnBu")
+
+status
+box_stat
+
+
+```
+
+
+```{r warning=FALSE}
+count_child= Children_cut %>% group_by(Children)%>%
+  count() %>% filter(n > 10)
+count_child
+
+child <- ggplot (data =count_child ,aes(x = Children,y=n)) + 
+  theme_bw()+
+  geom_col(fill="wheat",color = "black") + scale_x_continuous(breaks=seq(0,10))+
+  labs(x = "Number Of Children", y= "Amount Of Billionaries", title="Amount of Billionaires For Each Amount Of Children") 
+child
+```
+
+
+
+#### Density for Net Worth level
+
+
+We have decreased the net worth to normalize critical values, such as the first 3 billionaires.
+**Note: the outcome seems to resemble chi square distribution**
+
+
+```{r warning=FALSE}
+ggplot(data=Edu_cut %>% sample_n(500), aes(x=NetWorth))+ scale_x_log10() +
+  geom_density(fill="turquoise4",alpha=.4)
+  
+
+```
+
+#### China & US comparisante 
+
+
+<script src="https://unpkg.com/@lottiefiles/lottie-player@latest/dist/lottie-player.js"></script>
+<lottie-player src="https://assets5.lottiefiles.com/packages/lf20_b1imuadj.json"  background="transparent"  speed="1"  style="width: 500px; height: 200px;"  loop  autoplay></lottie-player>
+
+
+We chose 2 representing countries which we would like to distinct the difference between billionaires in those countries, interesting conclusions might come up....
+
+
+First, let's filter the data so only billionaires from US and China will be included.
+
+
+```{r warning=FALSE}
+x <-City_cut%>%
+filter(Citizenship=="China" | Citizenship== "United States")
+unique(x$Citizenship)
+
+```
+
+
+Now, we wanted to check which Citizenship has a larger representation in the billionaires list.
+as we can see, in a filtered data which contains only China and US billionaires, there are more American billionaires, which means that there are a little more American Billionaires then Chinese in total.
+
+
+```{r warning=FALSE}
+colors = c("lightcoral","lightblue1")
+
+data= x %＞% 
+        group_by(Citizenship) %＞% 
+        summarize(counts = n(),
+                  percentage = n()/nrow(x))
+pie= plot_ly(data = data, labels = ~Citizenship, values = ~percentage, type = 'pie', sort= FALSE,
+            marker= list(colors=colors, line = list(color="black", width=1)))
+pie
+
+
+```
+
+
+
+##### Amount Of Billionaires For Each Country, Grouped By Education Level
+
+
+**Note**: the amount of billionaires of China that their education level is mentioned, is only 30% from the total amount of Chinese billionaires.
+	
+	
+```{r, figures-side, fig.show="hold", out.width="50%",warning=FALSE}
+	
+new<- Edu_cut %>% filter(Citizenship=="China")
+plot1 <- ggplot (data =new, aes(x = fct_infreq(edu_lvl),fill=edu_lvl)) + 
+  theme_bw()+
+  theme(axis.text.x = element_text(angle = 60, hjust = 1)) + #adjusting the names in a good angle
+  geom_bar(color = "black") +scale_fill_brewer(name="Education level",palette="GnBu")+
+  labs(x = "Education Level", y= "Amount", title="Amount Of Chinese Billionaires For Each Education Level")
+
+
+new1<- Edu_cut %>% filter(Citizenship=="United States")
+plot2 <- ggplot (data =new1, aes(x = fct_infreq(edu_lvl),fill=edu_lvl)) + 
+  theme_bw()+
+  theme(axis.text.x = element_text(angle = 60, hjust = 1)) + #adjusting the names in a good angle
+  geom_bar(color = "black") + scale_fill_brewer(name="Education Level",palette="GnBu")+
+  labs(x = "Education Level", y= "Amount", title="Amount Of American Billionaires For Each Education Level")
+
+plot1
+plot2
+
+
+
+```
+
+
+##### Visualization Of Mean, Median And Variance Of Net Worth - US & China
+
+
+These plots represent an interesting perspective on the differences between American and Chinese billionaires. As it seems, there is a distinctively disparity between the American and Chinese median, mean and variance, in meanings of net worth. We might want to check that later, by using one of the models.
+
+
+```{r warning=FALSE}
+x %>% group_by(Citizenship) %>%
+	summarise(mean_NetWorth = mean(NetWorth))
+
+box_plot_china_us <- ggplot(City_cut %>% filter(Country=="China"| Country=="United States" ), aes(x=Citizenship,y= NetWorth , fill=Citizenship)) +
+    geom_boxplot(alpha=0.7) + scale_y_log10()+
+    stat_summary(fun.y=mean, geom="point", shape=20, size=7, color="black", fill="black") +
+    theme(legend.position="none") +
+    scale_fill_brewer(palette="GnBu")
+box_plot_china_us
+
+
+
+dens<-ggplot(x, aes(x=NetWorth, fill=Citizenship))+ scale_x_log10()+ geom_density(alpha=0.4)+scale_fill_brewer(name="Country",palette="GnBu")
+dens
+
+```
+
+
+
+### Modeling {.tabset .tabset-fade}
+
+
+After visualizing all kind of variables which we thought could have effected one's net worth, we chose few of them to test our assumptions.
+
+
+#### Goodness of fit test
+
+
+After visualizing the density of the net worth, we suspected that this density resembles chi square distribution because of the high density on the left part of the plot.
+In order to examine this hypothesize, we would like to perform a goodness of fit chi square test, with a null hypothesize that the net worth of billionaires distribute with chi square distribution. 
+
+
+$$
+H_0:Net Worth \sim \mathcal{\chi^2_{0.95, df}}\\
+H_1:Net Worth \sim else\\
+$$
+
+First, we will find the amount of degrees of freedom that distributes in the most similar way to our net worth distribution,by comparing chi square distribution to the net worth distribution, using geom_qq.
+
+
+```{r}
+
+ggplot(Forbes_cut, aes(sample=log10(NetWorth)*10)) + geom_qq(distribution = qchisq , dparams = list(df=5))
+```
+
+
+We can see that with df=5, the y axis is quite equal to the x axis, so it fits.
+
+
+```{r}
+set.seed(0)
+log_nw=(log10(Forbes_cut$NetWorth)*10)
+nw_breaks <- c(0, 3, 4, 5, 7, 9, 12, 25)
+ Forbes_cut_gf <- Forbes_cut %>% mutate(nw_bin = cut(log_nw, breaks = nw_breaks, include.lowest=TRUE)) %>%
+ sample_n(1000)
+
+nw_chi_prep <- Forbes_cut_gf %>% 
+ count(nw_bin, name = "observed") %>%
+ mutate(upper_bound = nw_breaks[-1]) %>%
+ mutate(lower_bound = nw_breaks[1:7]) %>%
+ mutate(expected_prob = pchisq(q = upper_bound, df= 5)-
+ pchisq(q = lower_bound, df=5)) %>%
+ mutate(expected_prob = expected_prob/sum(expected_prob)) %>%
+ mutate(expected = expected_prob*1000) %>%
+ mutate(chi_comp = (observed-expected)^2/expected)
+nw_chi_prep
+chi2_0 <- sum(nw_chi_prep$chi_comp)
+chi2_0
+1-pchisq(q = chi2_0, df = 6)
+qchisq(0.95, df = 5)
+chisq.test(x = nw_chi_prep$observed,p = nw_chi_prep$expected_prob)
+
+
+```
+
+$$
+TBD = \chi^2_0 > \chi^2_{0.95, 4} = 9.487729
+$$
+
+Although The $$\chi^2_0$$ value isn't big, the critical value is still smaller, thus we cannot accept the null hypothesis. Based on the qqplot, we understood that the distribution resembles the chi square distribution, but  after we applied the Goodness of fit test, we will reject the null hypothesis.
+The results are interesting as they are showing a small statistical value and an impressive similarity to chi square distribution. We will consider researching them in future projects.
+
+
+#### Statistical hypothesis test for variance equality
+
+
+As we saw in the plots visualization between China and US, we assume that the variances of their net worth are not equal.
+To reject the hypothesis that the variances are equal, we will use the F test.
+
+
+```{r}
+
+China_N<-c(City_cut %>% filter(Citizenship=="China") %>% sample_n(500) %>% select(NetWorth))
+
+
+USA_N<-c(City_cut %>% filter(Citizenship=="United States") %>% sample_n(500) %>% select(NetWorth))
+
+```
+
+
+Now after we sampled 500 billionaires from each country, let's do the test.
+
+
+```{r}
+var.test(x = unlist(China_N),y = unlist(USA_N))
+
+right_value <- qf(0.975, df1 = 499, df2 = 499)
+right_value
+
+left_value <- qf(0.025, df1 = 499, df2 = 499)
+left_value
+
+```
+
+$$
+f^{(499,499)}_{0.025} = 0.8388858\\
+f^{(499,499)}_{0.975} = 1.192057\\
+F_0 = 0.2467489\\
+F_0 < f^{(499,499)}_{0.025}
+$$
+
+So according to the f test, The F statistic is smaller than the left critical value, therefore, with significant level of 95%, we will reject the null hypothesis and accept the alternative hypothesis, the variances of China and US aren't equal.
+
+
+#### Linear Regression Model
+
+
+Looking at our data, we have only one continuous variable that may effect the net worth-Age.
+Although we have heard of a few young billionaires, we infer that life experience has an effect on the wealth of a billionaire. So, we are interested to find out whether there is a correlation between age and one's net worth. 
+
+
+$$
+H_0:\beta{1}= 0\\
+H_1:\beta{1} \neq 0\\
+$$
+
+
+```{r}
+fit1 <- lm(formula = log10(NetWorth)~Age , data = Forbes_cut %>% sample_n(1000))
+summary(fit1)
+```
+
+By looking at the regression summary we can see some interesting details. 
+
+* 1-the beta 1 value is really closed to 0 (one year adds 0.003 billion dollars to one's net worth )
+
+* 2-the R squared is also extremely low.
+
+
+* 3-$$Tb1$$ & $$F0$$ are pretty high and indicates statistic significant. 
+
+Those results together, indicates that our linear regression model is significant but the correlation between age and new worth is very weak. The significant is probably effected by other factors. Therefore, we can determine that there is almost zero correlation between age and net worth.
+This geom point shows exactly what we've discovered. 
+
+
+```{r}
+ggplot(Age_cut,aes(x=Age,y=NetWorth))+geom_point(aes(color=NetWorth)) + scale_y_log10()+
+  scale_color_viridis(option = "D")
+
+  
+```
+
+
+
+### Conclusion
+
+<script src="https://unpkg.com/@lottiefiles/lottie-player@latest/dist/lottie-player.js"></script>
+<lottie-player src="https://assets5.lottiefiles.com/packages/lf20_ShrsmB.json"  background="transparent"  speed="1"  style="width: 300; height: 200;"  loop  autoplay></lottie-player>
+
+
+In this project, we examined two different questions.
+We discovered using statistical measures that there is no relation (by a significant level of 95%) between the age of a billionaire and his total net worth. 
+
+As we received the variance test results, which indicated that there is a difference between variances of net worth of China and the US billionaires, they made us wondering why this difference exists. In order to find out and to solve the riddle,  We took a step further and tried to develop a theory. Based on information we collected in "micro organizational behavior", a course we took last semester, we assumed that this difference is an outcome of cultural difference-  while the American culture is individualistic, everyone to himself - the Chinese culture is collectivist - "One for all and all for One". To have a second opinion on our assumption, we emailed **Carmit Tadmor**- our lecturer for micro organisational behaviour in the previous semester.
+Carmit specialized in cultural differences and their effect on one's life.
+Carmit has explained to us that it is a bit difficult to draw significant conclusions from the data. After all, we did not take into account any control factors (like industry, poverty, etc.), and also the use of citizenship alone is a bit problematic because it is unknown where the person actually made his fortune.
+In her opinion, it seems that if we were to determine the gap between the two variancess it may be more related to power distance than cultural differences.
+While the US is very illegitimate and anyone can succeed,
+In China - there is a very hierarchical system and only those who receive approval from the government and are close to the plate can succeed.
+
+
+[You can read more about it in this linked article.](https://www.hofstede-insights.com/country-comparison/china,the-usa/)
+
+
+We are aware that some of our assumptions are a bit problematic because of a lack of data. 
+Moreover, the billionaires are a very small group, therefore any billionaire that we had to filter due to lacking data had a big effect on our results and may cause some of our tests to be a little biased.
+
+As the density visualization had shown, the data isn't normally distributed but in order to continue our project and make further tests, we assumed that it distributes normally.
